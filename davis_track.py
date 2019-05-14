@@ -84,6 +84,11 @@ def extract_images(filename,        # filename to load data from
                    t_start=None,    # time to start generating images (seconds)
                    t_end=None       # time to end generating images (seconds)
                   ):
+    fn = '%s_%g_%g_%g_%g.cache.npz' % (filename, dt, decay_time, t_start, t_end)
+    if os.path.exists(fn):
+        data = np.load(fn)
+        return data['times'], data['images']
+    
     packet_size = 8
 
     with open(filename, 'rb') as f:
@@ -143,6 +148,8 @@ def extract_images(filename,        # filename to load data from
 
     images = np.array(images)
     times = np.array(times)
+
+    np.savez(fn, times=times, images=images)
     
     return times, images
 
