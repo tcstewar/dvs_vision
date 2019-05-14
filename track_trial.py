@@ -56,7 +56,13 @@ class TrackingTrial(pytry.PlotTrial):
                                      )
                 s[1] = s[1][index:]
                 s[2] = s[2][index:]
+                if len(images) > len(s[2]):
+                    assert len(images) == len(s[2]) + 1
+                    images = images[:len(s[2])]
                 s.append(images)
+
+                assert len(s[1])==len(s[2])
+                assert len(s[2])==len(s[3])
                 
                 
         
