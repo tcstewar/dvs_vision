@@ -15,12 +15,14 @@ class TrackingTrial(pytry.PlotTrial):
         self.param('keep invalid frames (ones with no ball)', keep_invalid=False)
         self.param('task (valid|location)', task='location')
         self.param('dt', dt=0.01)
+        self.param('dt_test', dt_test=0.001)
         self.param('decay time (input synapse)', decay_time=0.01)
         self.param('number of neurons', n_neurons=100)
         self.param('gabor size', gabor_size=11)
         self.param('solver regularization', reg=0.03)
         self.param('test set (odd|one)', test_set='one')
         self.param('enhance training set with flips', enhance_training=True)
+        self.param('output filter', output_filter=0.01)
         
     def evaluate(self, p, plt):
         files = []
@@ -87,8 +89,34 @@ class TrackingTrial(pytry.PlotTrial):
             targets_test = targets_all[1::2]
         elif p.test_set == 'one':
             test_index = random.randint(0, len(inputs)-1)
-            inputs_test = inputs[test_index]
-            targets_test = targets[test_index]
+            if p.dt == p.dt_test:
+                inputs_test = inputs[test_index]
+                targets_test = targets[test_index]
+            else:
+                s = sets[test_index]
+                times1, targets1 = davis_track.extract_targets(
+                        os.path.join(p.dataset_dir, s[0]),
+                        dt=p.dt_test)
+                index = 0
+                while targets1[index][3] == 0:
+                    index += 1
+                times2, images1 = davis_track.extract_images(
+                        os.path.join(p.dataset_dir, s[0]),
+                        dt=p.dt_test, decay_time=p.decay_time,
+                        t_start=times1[index]-2*p.dt_test,
+                        t_end=times1[-1]-p.dt_test,
+                        )
+                times1 = times1[index:]
+                targets1 = targets1[index:]
+                if len(images1) > len(targets1):
+                    assert len(images1) == len(targets1) + 1
+                    images1 = images1[:len(targets1)]
+
+                assert len(times1)==len(targets1)
+                assert len(targets1)==len(images1)
+                inputs_test = images1
+                targets_test = targets1[:,:2]
+                
             inputs_train = np.vstack(inputs[:test_index]+inputs[test_index+1:])
             targets_train = np.vstack(targets[:test_index]+targets[test_index+1:])
             
@@ -139,22 +167,25 @@ class TrackingTrial(pytry.PlotTrial):
 
         _, a_train = nengo.utils.ensemble.tuning_curves(ens, sim, inputs=eval_points_train)    
         outputs_train = np.dot(a_train, sim.data[c].weights.T)       
-        rmse_train = np.sqrt(np.mean((targets_train-outputs_train)**2))
+        rmse_train = np.sqrt(np.mean((targets_train-outputs_train)**2, axis=0))
         _, a_test = nengo.utils.ensemble.tuning_curves(ens, sim, inputs=eval_points_test)    
         outputs_test = np.dot(a_test, sim.data[c].weights.T)       
-        rmse_test = np.sqrt(np.mean((targets_test-outputs_test)**2))
+        filt = nengo.synapses.Lowpass(p.output_filter)
+        outputs_test = filt.filt(outputs_test, dt=p.dt_test)
+        targets_test = filt.filt(targets_test, dt=p.dt_test)
+        rmse_test = np.sqrt(np.mean((targets_test-outputs_test)**2, axis=0))
         
         
         if plt:
             plt.subplot(2, 1, 1)
             plt.plot(targets_train, ls='--')
             plt.plot(outputs_train)
-            plt.title('train\nrmse=%1.4f' % rmse_train)
+            plt.title('train\nrmse=%1.4f,%1.4f' % tuple(rmse_train))
             
             plt.subplot(2, 1, 2)
             plt.plot(targets_test, ls='--')
             plt.plot(outputs_test)
-            plt.title('test\nrmse=%1.4f' % rmse_test)
+            plt.title('test\nrmse=%1.4f,%1.4f' % tuple(rmse_test))
             
         
         
