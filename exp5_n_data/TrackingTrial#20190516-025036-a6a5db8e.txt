@@ -1,0 +1,15 @@
+seed = 2
+n_data = 40
+dataset_dir = '../davis_io/data'
+keep_invalid = False
+task = 'location'
+dt = 0.1
+decay_time = 0.01
+n_neurons = 5000
+gabor_size = 11
+reg = 0.03
+test_set = 'one'
+enhance_training = True
+
+rmse_train = 38.048587868451186
+rmse_test = 40.00618014900296
