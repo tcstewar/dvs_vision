@@ -82,9 +82,25 @@ def extract_images(filename,        # filename to load data from
                    dt,              # time between images to create (seconds)
                    decay_time=0.1,  # spike decay time (seconds)
                    t_start=None,    # time to start generating images (seconds)
-                   t_end=None       # time to end generating images (seconds)
+                   t_end=None,      # time to end generating images (seconds)
+                   separate_channels=False, # separate the positive and negative channels
+                   keep_pos=True,   # keep negative events
+                   keep_neg=True,   # keep positive events
+                   saturation=10, # clip data to this limit
                   ):
-    fn = '%s_%g_%g_%g_%g.cache.npz' % (filename, dt, decay_time, t_start, t_end)
+
+    if separate_channels:
+        t_pos, images_pos = extract_images(filename, dt, decay_time, t_start, t_end, keep_neg=False, saturation=saturation)
+        t_neg, images_neg = extract_images(filename, dt, decay_time, t_start, t_end, keep_pos=False, saturation=saturation)
+        assert np.array_equal(t_pos, t_neg)
+        return t_pos, np.hstack([images_pos, images_neg])
+
+
+    fn = '%s_%g_%g_%g_%g_%g%s%s.cache.npz' % (filename, dt, decay_time,
+                                              t_start, t_end,
+                                              saturation,
+                                              '_pos' if keep_pos else '', 
+                                              '_neg' if keep_neg else '')
     if os.path.exists(fn):
         data = np.load(fn)
         return data['times'], data['images']
@@ -99,7 +115,7 @@ def extract_images(filename,        # filename to load data from
     y = ((data[1::packet_size].astype('uint16')<<8) + data[::packet_size]) >> 2
     x = ((data[3::packet_size].astype('uint16')<<8) + data[2::packet_size]) >> 1
     # get the polarity (+1 for on events, -1 for off events)
-    p = np.where((data[::packet_size] & 0x02) == 0x02, 1, -1)
+    p = np.where((data[::packet_size] & 0x02) == 0x02, 1 if keep_pos else 0, -1 if keep_neg else 0)
     v = np.where((data[::packet_size] & 0x01) == 0x01, 1, -1)
     # find the time stamp for each event, in seconds from the start of the file
     t = data[7::packet_size].astype(np.uint32)
@@ -126,22 +142,20 @@ def extract_images(filename,        # filename to load data from
 
     now = t_start
 
-    event_dt = dt
-
     while now < t_end:
-        if event_dt != 0:
-            decay_scale = 1-np.abs(event_dt)/(np.abs(event_dt)+decay_time)
-            image *= decay_scale
+        decay_scale = np.exp(-dt/decay_time)#1-dt/(dt+decay_time)
+        image *= decay_scale
 
-        if event_dt > 0:
-            count = np.searchsorted(t[event_index:], now + event_dt)
-            s = slice(event_index, event_index+count)
+        count = np.searchsorted(t[event_index:], now + dt)
+        s = slice(event_index, event_index+count)
 
-            dts = event_dt-(t[s]-now)
-            image[y[s], x[s]] += p[s] * (1-dts / (dts+decay_time))
-            event_index += count
+        dts = dt-(t[s]-now)
+        np.add.at(image, [y[s], x[s]], p[s] * np.exp(-dts/decay_time))
+        event_index += count
 
-        now += event_dt
+        image = np.clip(image, -saturation, saturation)
+
+        now += dt
 
         images.append(image.copy())
         times.append(now)
@@ -153,3 +167,27 @@ def extract_images(filename,        # filename to load data from
     
     return times, images
 
+
+def load_data(filename, dt, decay_time, separate_channels=False, saturation=10):
+    times, targets = extract_targets(filename, dt=dt)
+    index = 0
+    while targets[index][3] == 0:
+        index += 1
+                
+    times2, images = extract_images(filename,
+                                 dt=dt, decay_time=decay_time,
+                                 t_start=times[index]-2*dt, t_end=times[-1]-dt,
+                                 separate_channels=separate_channels,
+                                 saturation=saturation,
+                                 )
+    times = times[index:]
+    targets = targets[index:]
+    if len(images) > len(targets):
+        assert len(images) == len(targets) + 1
+        images = images[:len(targets)]
+
+    assert len(times)==len(targets)
+    assert len(targets)==len(images)
+
+    return times, targets, images
+        
