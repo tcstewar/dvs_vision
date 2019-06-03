@@ -43,7 +43,7 @@ class TrackingTrial(pytry.PlotTrial):
         targets = []
         for f in files:
             print(f)
-            times, targs, imgs = davis_track.load_data(f, dt=p.dt, decay_time=p.decay_time,
+            times, imgs, targs = davis_track.load_data(f, dt=p.dt, decay_time=p.decay_time,
                                                separate_channels=p.separate_channels, 
                                                saturation=p.saturation)
             inputs.append(imgs)
@@ -58,7 +58,7 @@ class TrackingTrial(pytry.PlotTrial):
             targets_train = targets_all[::2]
             targets_test = targets_all[1::2]
         elif p.test_set == 'one':
-            times, targs, imgs = davis_track.load_data(test_file, dt=p.dt_test, decay_time=p.decay_time,
+            times, imgs, targs = davis_track.load_data(test_file, dt=p.dt_test, decay_time=p.decay_time,
                                                separate_channels=p.separate_channels, 
                                                saturation=p.saturation)
             inputs_test = imgs
@@ -67,22 +67,8 @@ class TrackingTrial(pytry.PlotTrial):
             targets_train = targets_all
             
         if p.augment:
-            assert False
-            inputs_flip_lr = inputs_train[:,::-1,:]
-            targets_flip_lr = np.array(targets_train)
-            targets_flip_lr[:,1] = 180 - targets_flip_lr[:,1]
-            
-            inputs_flip_ud = inputs_train[:,:,::-1]
-            targets_flip_ud = np.array(targets_train)
-            targets_flip_ud[:,0] = 240 - targets_flip_ud[:,0]
-        
-            inputs_flip_both = inputs_train[:,::-1,:]
-            inputs_flip_both = inputs_flip_both[:,:,::-1]
-            targets_flip_both = np.array(targets_train)
-            targets_flip_both[:,1] = 180 - targets_flip_both[:,1]
-            targets_flip_both[:,0] = 240 - targets_flip_both[:,0]
-            inputs_train = np.vstack([inputs_train, inputs_flip_lr, inputs_flip_ud, inputs_flip_both])
-            targets_train = np.vstack([targets_train, targets_flip_lr, targets_flip_ud, targets_flip_both])
+            inputs_train, targets_train = davis_track.augment(inputs_train, targets_train,
+                                                              separate_channels=p.separate_channels)
             
         if p.separate_channels:
             shape = (360, 240)
