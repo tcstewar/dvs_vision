@@ -12,8 +12,6 @@ class TrackingTrial(pytry.PlotTrial):
     def params(self):
         self.param('number of data sets to use', n_data=-1)
         self.param('data directory', dataset_dir=r'dvs_data')
-        self.param('keep invalid frames (ones with no ball)', keep_invalid=False)
-        self.param('task (valid|location)', task='location')
         self.param('dt', dt=0.01)
         self.param('dt_test', dt_test=0.001)
         self.param('decay time (input synapse)', decay_time=0.01)
@@ -21,106 +19,55 @@ class TrackingTrial(pytry.PlotTrial):
         self.param('gabor size', gabor_size=11)
         self.param('solver regularization', reg=0.03)
         self.param('test set (odd|one)', test_set='one')
-        self.param('enhance training set with flips', enhance_training=True)
+        self.param('augment training set with flips', augment=True)
         self.param('output filter', output_filter=0.01)
+        self.param('saturation', saturation=5)
+        self.param('separate positive and negative channels', separate_channels=True)
         
     def evaluate(self, p, plt):
         files = []
         sets = []
         for f in os.listdir(p.dataset_dir):
             if f.endswith('events'):
-                files.append(f)
-                
-        n_data = p.n_data if p.n_data != -1 else len(files)
-        for f in random.sample(files, n_data):
-            times, targets = davis_track.extract_targets(os.path.join(p.dataset_dir, f),
-                                     dt=p.dt,
-                                     )
-            sets.append([f, times, targets])
-            
-        if p.keep_invalid:
-            for s in sets:
-                times, images = davis_track.extract_images(os.path.join(p.dataset_dir, s[0]),
-                                     dt=p.dt, decay_time=p.decay_time,
-                                     )
-                extra_targets = np.tile([[-1, -1, -1, 0]], (len(times)-len(s[1]),1))
-                s[2] = np.vstack([s[2], extra_targets])
-                s.append(images)
-        else:
-            for s in sets:
-                index = 0
-                while s[2][index][3] == 0:
-                    index += 1
-                    
-                times, images = davis_track.extract_images(os.path.join(p.dataset_dir, s[0]),
-                                     dt=p.dt, decay_time=p.decay_time,
-                                     t_start=s[1][index]-2*p.dt, t_end=s[1][-1]-p.dt,
-                                     )
-                s[1] = s[1][index:]
-                s[2] = s[2][index:]
-                if len(images) > len(s[2]):
-                    assert len(images) == len(s[2]) + 1
-                    images = images[:len(s[2])]
-                s.append(images)
-
-                assert len(s[1])==len(s[2])
-                assert len(s[2])==len(s[3])
-                
+                files.append(os.path.join(p.dataset_dir, f))
                 
         
+        if p.test_set == 'one':
+            test_file = random.sample(files, 1)[0]
+            files.remove(test_file)
+        
+        if p.n_data != -1:
+            files = random.sample(files, p.n_data)
+            
         inputs = []
         targets = []
-        if p.task == 'valid':
-            for f, times, targ, images in sets:
-                inputs.append(images)
-                targets.append(targ[:,3:])
-        elif p.task == 'location':
-            for f, times, targ, images in sets:
-                inputs.append(images)
-                targets.append(targ[:,:2])
-                
-                
+        for f in files:
+            print(f)
+            times, targs, imgs = davis_track.load_data(f, dt=p.dt, decay_time=p.decay_time,
+                                               separate_channels=p.separate_channels, 
+                                               saturation=p.saturation)
+            inputs.append(imgs)
+            targets.append(targs[:,:2])
+                                
         inputs_all = np.vstack(inputs)
         targets_all = np.vstack(targets)
+        
         if p.test_set == 'odd':
             inputs_train = inputs_all[::2]
             inputs_test = inputs_all[1::2]
             targets_train = targets_all[::2]
             targets_test = targets_all[1::2]
         elif p.test_set == 'one':
-            test_index = random.randint(0, len(inputs)-1)
-            if p.dt == p.dt_test:
-                inputs_test = inputs[test_index]
-                targets_test = targets[test_index]
-            else:
-                s = sets[test_index]
-                times1, targets1 = davis_track.extract_targets(
-                        os.path.join(p.dataset_dir, s[0]),
-                        dt=p.dt_test)
-                index = 0
-                while targets1[index][3] == 0:
-                    index += 1
-                times2, images1 = davis_track.extract_images(
-                        os.path.join(p.dataset_dir, s[0]),
-                        dt=p.dt_test, decay_time=p.decay_time,
-                        t_start=times1[index]-2*p.dt_test,
-                        t_end=times1[-1]-p.dt_test,
-                        )
-                times1 = times1[index:]
-                targets1 = targets1[index:]
-                if len(images1) > len(targets1):
-                    assert len(images1) == len(targets1) + 1
-                    images1 = images1[:len(targets1)]
-
-                assert len(times1)==len(targets1)
-                assert len(targets1)==len(images1)
-                inputs_test = images1
-                targets_test = targets1[:,:2]
-                
-            inputs_train = np.vstack(inputs[:test_index]+inputs[test_index+1:])
-            targets_train = np.vstack(targets[:test_index]+targets[test_index+1:])
+            times, targs, imgs = davis_track.load_data(test_file, dt=p.dt_test, decay_time=p.decay_time,
+                                               separate_channels=p.separate_channels, 
+                                               saturation=p.saturation)
+            inputs_test = imgs
+            targets_test = targs[:, :2]
+            inputs_train = inputs_all
+            targets_train = targets_all
             
-        if p.enhance_training:
+        if p.augment:
+            assert False
             inputs_flip_lr = inputs_train[:,::-1,:]
             targets_flip_lr = np.array(targets_train)
             targets_flip_lr[:,1] = 180 - targets_flip_lr[:,1]
@@ -137,8 +84,12 @@ class TrackingTrial(pytry.PlotTrial):
             inputs_train = np.vstack([inputs_train, inputs_flip_lr, inputs_flip_ud, inputs_flip_both])
             targets_train = np.vstack([targets_train, targets_flip_lr, targets_flip_ud, targets_flip_both])
             
-                      
-        dimensions = 240*180
+        if p.separate_channels:
+            shape = (360, 240)
+        else:
+            shape = (180, 240)
+        
+        dimensions = shape[0]*shape[1]
         eval_points_train = inputs_train.reshape(-1, dimensions)
         eval_points_test = inputs_test.reshape(-1, dimensions)
 
@@ -146,7 +97,7 @@ class TrackingTrial(pytry.PlotTrial):
         with model:
             from nengo_extras.vision import Gabor, Mask
             encoders = Gabor().generate(p.n_neurons, (p.gabor_size, p.gabor_size))
-            encoders = Mask((240, 180)).populate(encoders, flatten=True)
+            encoders = Mask(shape).populate(encoders, flatten=True)
 
             ens = nengo.Ensemble(n_neurons=p.n_neurons, dimensions=dimensions,
                                  encoders=encoders,
