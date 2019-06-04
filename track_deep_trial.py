@@ -15,28 +15,29 @@ class TrackingTrial(pytry.PlotTrial):
     def params(self):
         self.param('number of data sets to use', n_data=-1)
         self.param('data directory', dataset_dir=r'dvs_data')
-        self.param('dt', dt=0.01)
+        self.param('dt', dt=0.1)
         self.param('dt_test', dt_test=0.001)
         self.param('decay time (input synapse)', decay_time=0.01)
         self.param('test set (odd|one)', test_set='one')
-        self.param('augment training set with flips', augment=True)
+        self.param('augment training set with flips', augment=False)
         self.param('output filter', output_filter=0.01)
         self.param('miniback size', minibatch_size=200)
         self.param('learning rate', learning_rate=1e-3)
         self.param('number of epochs', n_epochs=5)
         self.param('saturation', saturation=5)
         self.param('separate positive and negative channels', separate_channels=True)
-        self.param('number of features in layer 1', n_features_1=6)
-        self.param('number of features in layer 2', n_features_2=24)
+        self.param('number of features in layer 1', n_features_1=28)
+        self.param('number of features in layer 2', n_features_2=64)
         self.param('kernel size layer 1', kernel_size_1=5)
         self.param('stride layer 1', stride_1=3)
-        self.param('kernel size layer 2', kernel_size_2=5)
-        self.param('stride layer 2', stride_2=3)
+        self.param('kernel size layer 2', kernel_size_2=3)
+        self.param('stride layer 2', stride_2=1)
         self.param('split spatial configuration', split_spatial=True)
         self.param('spatial stride', spatial_stride=10)
         self.param('spatial kernel size', spatial_size=20)
         self.param('number of parallel ensembles', n_parallel=2)
-        self.param('merge pixels (to make a smaller image)', merge=3)        
+        self.param('merge pixels (to make a smaller image)', merge=3)
+        self.param('show in nengo gui', gui=False)
         
         
     def evaluate(self, p, plt):
@@ -140,6 +141,50 @@ class TrackingTrial(pytry.PlotTrial):
                          
 
             p_out = nengo.Probe(out)
+
+        if p.gui:
+            locals_dict = getattr(self, 'locals', dict(model=model))
+            import nengo_gui
+            import webbrowser
+
+            if hasattr(nengo_gui, 'guibackend'):
+                host = 'localhost'
+                port = 8080
+                server_settings = nengo_gui.guibackend.GuiServerSettings((host, port))
+                model_context = nengo_gui.guibackend.ModelContext(
+                                    model=model,
+                                    locals=locals_dict,
+                                    filename=sys.argv[1],
+                                    writeable=False)
+                page_settings = nengo_gui.page.PageSettings(
+                                    filename_cfg=sys.argv[1] + '.cfg',
+                                    backend='nengo',
+                                    editor_class=nengo_gui.components.editor.NoEditor)
+                server = nengo_gui.gui.BaseGUI(
+                                    model_context, server_settings, page_settings)
+                if hasattr(server.server, 'gen_one_time_token'):
+                    wb = webbrowser.get().open('%s://%s:%d/?token=%s' % (
+                                        'http', host, port, server.server.gen_one_time_token()))
+                else:
+                    wb = webbrowser.get().open('%s://%s:%d/' % (
+                                        'http', host, port))
+
+                server.start()
+            else:
+                try:
+                    nengo_gui.GUI(model=model,
+                                  filename=sys.argv[1],
+                                  locals=locals_dict,
+                                  editor=False,
+                                  ).start()
+                except TypeError:
+                    # support nengo_gui v0.2.0 and previous
+                    nengo_gui.GUI(model=model,
+                                  filename=sys.argv[1],
+                                  locals=locals_dict,
+                                  interactive=False,
+                                  allow_file_change=False,
+                                  ).start()
 
         N = len(inputs_train)
         n_steps = int(np.ceil(N/p.minibatch_size))
