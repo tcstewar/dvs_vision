@@ -25,6 +25,11 @@ class TrackingTrial(pytry.PlotTrial):
         self.param('number of epochs', n_epochs=5)
         self.param('saturation', saturation=5)
         self.param('separate positive and negative channels', separate_channels=True)
+        self.param('number of features in layer 1', n_features_1=6)
+        self.param('number of features in layer 2', n_features_2=24)
+        self.param('kernel size', kernel_size=11)
+        self.param('stride', stride=7)
+        
         
     def evaluate(self, p, plt):
         files = []
@@ -96,11 +101,13 @@ class TrackingTrial(pytry.PlotTrial):
 
             out = nengo.Node(None, size_in=2)
 
-            conv1 = nengo.Convolution(6, shape, channels_last=False, strides=(2,2))
+            conv1 = nengo.Convolution(p.n_features_1, shape, channels_last=False, strides=(p.stride,p.stride),
+                                      kernel_size=(p.kernel_size, p.kernel_size))
             layer1 = nengo.Ensemble(conv1.output_shape.size, dimensions=1)
             nengo.Connection(inp, layer1.neurons, transform=conv1)
 
-            conv2 = nengo.Convolution(24, conv1.output_shape, channels_last=False, strides=(2,2))
+            conv2 = nengo.Convolution(p.n_features_2, conv1.output_shape, channels_last=False, strides=(p.stride,p.stride),
+                                      kernel_size=(p.kernel_size, p.kernel_size))
             layer2 = nengo.Ensemble(conv2.output_shape.size, dimensions=1)
             nengo.Connection(layer1.neurons, layer2.neurons, transform=conv2)
 
@@ -112,8 +119,6 @@ class TrackingTrial(pytry.PlotTrial):
         n_steps = int(np.ceil(N/p.minibatch_size))
         dl_train_data = {inp: np.resize(inputs_train, (p.minibatch_size, n_steps, dimensions)),
                          p_out: np.resize(targets_train, (p.minibatch_size, n_steps, 2))}
-        #dl_train_data = {inp: inputs_train.reshape(-1, inp.size_out)[:, None, :],
-        #                 p_out: targets_train[:, None, :]}
         N = len(inputs_test)
         n_steps = int(np.ceil(N/p.minibatch_size))
         dl_test_data = {inp: np.resize(inputs_test, (p.minibatch_size, n_steps, dimensions)),
