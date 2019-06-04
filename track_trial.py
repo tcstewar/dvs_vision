@@ -23,6 +23,7 @@ class TrackingTrial(pytry.PlotTrial):
         self.param('output filter', output_filter=0.01)
         self.param('saturation', saturation=5)
         self.param('separate positive and negative channels', separate_channels=True)
+        self.param('merge pixels (to make a smaller image)', merge=1)
         
     def evaluate(self, p, plt):
         files = []
@@ -45,7 +46,7 @@ class TrackingTrial(pytry.PlotTrial):
             print(f)
             times, imgs, targs = davis_track.load_data(f, dt=p.dt, decay_time=p.decay_time,
                                                separate_channels=p.separate_channels, 
-                                               saturation=p.saturation)
+                                               saturation=p.saturation, merge=p.merge)
             inputs.append(imgs)
             targets.append(targs[:,:2])
                                 
@@ -71,9 +72,9 @@ class TrackingTrial(pytry.PlotTrial):
                                                               separate_channels=p.separate_channels)
             
         if p.separate_channels:
-            shape = (360, 240)
+            shape = (360//p.merge, 240//p.merge)
         else:
-            shape = (180, 240)
+            shape = (180//p.merge, 240//p.merge)
         
         dimensions = shape[0]*shape[1]
         eval_points_train = inputs_train.reshape(-1, dimensions)
@@ -110,7 +111,7 @@ class TrackingTrial(pytry.PlotTrial):
         filt = nengo.synapses.Lowpass(p.output_filter)
         outputs_test = filt.filt(outputs_test, dt=p.dt_test)
         targets_test = filt.filt(targets_test, dt=p.dt_test)
-        rmse_test = np.sqrt(np.mean((targets_test-outputs_test)**2, axis=0))
+        rmse_test = np.sqrt(np.mean((targets_test-outputs_test)**2, axis=0))*p.merge
         
         
         if plt:

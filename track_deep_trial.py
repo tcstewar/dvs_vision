@@ -28,14 +28,15 @@ class TrackingTrial(pytry.PlotTrial):
         self.param('separate positive and negative channels', separate_channels=True)
         self.param('number of features in layer 1', n_features_1=6)
         self.param('number of features in layer 2', n_features_2=24)
-        self.param('kernel size layer 1', kernel_size_1=11)
-        self.param('stride layer 1', stride_1=7)
-        self.param('kernel size layer 2', kernel_size_2=11)
-        self.param('stride layer 2', stride_2=7)
+        self.param('kernel size layer 1', kernel_size_1=5)
+        self.param('stride layer 1', stride_1=3)
+        self.param('kernel size layer 2', kernel_size_2=5)
+        self.param('stride layer 2', stride_2=3)
         self.param('split spatial configuration', split_spatial=True)
         self.param('spatial stride', spatial_stride=10)
-        self.param('spatial kernel size', spatial_size=21)
+        self.param('spatial kernel size', spatial_size=20)
         self.param('number of parallel ensembles', n_parallel=2)
+        self.param('merge pixels (to make a smaller image)', merge=3)        
         
         
     def evaluate(self, p, plt):
@@ -57,7 +58,7 @@ class TrackingTrial(pytry.PlotTrial):
         for f in files:
             times, imgs, targs = davis_track.load_data(f, dt=p.dt, decay_time=p.decay_time,
                                                separate_channels=p.separate_channels, 
-                                               saturation=p.saturation)
+                                               saturation=p.saturation, merge=p.merge)
             inputs.append(imgs)
             targets.append(targs[:,:2])
                                 
@@ -73,7 +74,7 @@ class TrackingTrial(pytry.PlotTrial):
         elif p.test_set == 'one':
             times, imgs, targs = davis_track.load_data(test_file, dt=p.dt_test, decay_time=p.decay_time,
                                                separate_channels=p.separate_channels, 
-                                               saturation=p.saturation)
+                                               saturation=p.saturation, merge=p.merge)
             inputs_test = imgs
             targets_test = targs[:, :2]
             inputs_train = inputs_all
@@ -85,9 +86,9 @@ class TrackingTrial(pytry.PlotTrial):
                                                               separate_channels=p.separate_channels)                
                       
         if p.separate_channels:
-            shape = (2, 180, 240)
+            shape = (2, 180//p.merge, 240//p.merge)
         else:
-            shape = (1, 180, 240)
+            shape = (1, 180//p.merge, 240//p.merge)
         
         dimensions = shape[0]*shape[1]*shape[2]
         eval_points_train = inputs_train.reshape(-1, dimensions)
@@ -135,6 +136,7 @@ class TrackingTrial(pytry.PlotTrial):
                                           kernel_stride=(p.stride_2,p.stride_2), kernel_size=(p.kernel_size_2,p.kernel_size_2))
                 convnet.make_output_layer(2)
                 nengo.Connection(convnet.output, out)
+                         
 
             p_out = nengo.Probe(out)
 
@@ -161,7 +163,7 @@ class TrackingTrial(pytry.PlotTrial):
         filt = nengo.synapses.Lowpass(p.output_filter)
         data = filt.filt(data, dt=dt_test)
         
-        rmse_test = np.sqrt(np.mean((targets_test-data)**2, axis=0))            
+        rmse_test = np.sqrt(np.mean((targets_test-data)**2, axis=0))*p.merge          
         if plt:
             plt.plot(data)
             plt.plot(targets_test, ls='--')

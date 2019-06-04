@@ -86,19 +86,20 @@ def extract_images(filename,        # filename to load data from
                    separate_channels=False, # separate the positive and negative channels
                    keep_pos=True,   # keep negative events
                    keep_neg=True,   # keep positive events
-                   saturation=10, # clip data to this limit
+                   saturation=10,   # clip data to this limit
+                   merge=1,         # merge pixels
                   ):
 
     if separate_channels:
-        t_pos, images_pos = extract_images(filename, dt, decay_time, t_start, t_end, keep_neg=False, saturation=saturation)
-        t_neg, images_neg = extract_images(filename, dt, decay_time, t_start, t_end, keep_pos=False, saturation=saturation)
+        t_pos, images_pos = extract_images(filename, dt, decay_time, t_start, t_end, keep_neg=False, saturation=saturation, merge=merge)
+        t_neg, images_neg = extract_images(filename, dt, decay_time, t_start, t_end, keep_pos=False, saturation=saturation, merge=merge)
         assert np.array_equal(t_pos, t_neg)
         return t_pos, np.hstack([images_pos, images_neg])
 
 
-    fn = '%s_%g_%g_%g_%g_%g%s%s.cache.npz' % (filename, dt, decay_time,
+    fn = '%s_%g_%g_%g_%g_%g_%d%s%s.cache.npz' % (filename, dt, decay_time,
                                               t_start, t_end,
-                                              saturation,
+                                              saturation, merge,
                                               '_pos' if keep_pos else '', 
                                               '_neg' if keep_neg else '')
     if os.path.exists(fn):
@@ -157,7 +158,13 @@ def extract_images(filename,        # filename to load data from
 
         now += dt
 
-        images.append(image.copy())
+        merged_images = []
+        for i in range(merge):
+            for j in range(merge):
+                merged_images.append(image[i::merge,j::merge])
+                
+        images.append(np.mean(merged_images, axis=0))
+        
         times.append(now)
 
     images = np.array(images)
@@ -168,7 +175,7 @@ def extract_images(filename,        # filename to load data from
     return times, images
 
 
-def load_data(filename, dt, decay_time, separate_channels=False, saturation=10):
+def load_data(filename, dt, decay_time, separate_channels=False, saturation=10, merge=1):
     times, targets = extract_targets(filename, dt=dt)
     index = 0
     while targets[index][3] == 0:
@@ -178,7 +185,7 @@ def load_data(filename, dt, decay_time, separate_channels=False, saturation=10):
                                  dt=dt, decay_time=decay_time,
                                  t_start=times[index]-2*dt, t_end=times[-1]-dt,
                                  separate_channels=separate_channels,
-                                 saturation=saturation,
+                                 saturation=saturation, merge=merge
                                  )
     times = times[index:]
     targets = targets[index:]
@@ -189,23 +196,32 @@ def load_data(filename, dt, decay_time, separate_channels=False, saturation=10):
     assert len(times)==len(targets)
     assert len(targets)==len(images)
 
-    return times, images, targets
+    return times, images, targets/merge
        
 
 def augment(inputs, targets, separate_channels):
+    width = inputs.shape[2]
+    height = inputs.shape[1]
+    
+    if separate_channels:
+        height = height // 2
+        inputs = inputs.reshape(-1, height, width)
     inputs_flip_lr = inputs[:,::-1,:]
     targets_flip_lr = np.array(targets, copy=True)
-    targets_flip_lr[:,1] = 180 - targets_flip_lr[:,1]
+    targets_flip_lr[:,1] = height - targets_flip_lr[:,1]
 
     inputs_flip_ud = inputs[:,:,::-1]
     targets_flip_ud = np.array(targets, copy=True)
-    targets_flip_ud[:,0] = 240 - targets_flip_ud[:,0]
+    targets_flip_ud[:,0] = width - targets_flip_ud[:,0]
 
     inputs_flip_both = inputs[:,::-1,:]
     inputs_flip_both = inputs_flip_both[:,:,::-1]
     targets_flip_both = np.array(targets, copy=True)
-    targets_flip_both[:,1] = 180 - targets_flip_both[:,1]
-    targets_flip_both[:,0] = 240 - targets_flip_both[:,0]
+    targets_flip_both[:,1] = height - targets_flip_both[:,1]
+    targets_flip_both[:,0] = width - targets_flip_both[:,0]
     inputs_aug = np.vstack([inputs, inputs_flip_lr, inputs_flip_ud, inputs_flip_both])
     targets_aug = np.vstack([targets, targets_flip_lr, targets_flip_ud, targets_flip_both])
+    
+    if separate_channels:
+        inputs_aug = inputs_aug.reshape(-1, height*2, width)
     return inputs_aug, targets_aug
