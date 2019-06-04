@@ -130,6 +130,7 @@ class TrackingTrial(pytry.PlotTrial):
                         shape,
                         spatial_stride=(p.spatial_stride, p.spatial_stride), 
                         spatial_size=(p.spatial_size,p.spatial_size))
+                nengo.Connection(inp, convnet.input)
                 convnet.make_middle_layer(n_features=p.n_features_1, n_parallel=p.n_parallel, n_local=1, n_remote=0,
                                           kernel_stride=(p.stride_1,p.stride_1), kernel_size=(p.kernel_size_1,p.kernel_size_1))
                 convnet.make_middle_layer(n_features=p.n_features_2, n_parallel=p.n_parallel, n_local=1, n_remote=0,
