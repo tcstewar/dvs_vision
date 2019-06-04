@@ -62,6 +62,7 @@ class TrackingTrial(pytry.PlotTrial):
             inputs_test = inputs_all[1::2]
             targets_train = targets_all[::2]
             targets_test = targets_all[1::2]
+            dt_test = p.dt*2
         elif p.test_set == 'one':
             times, imgs, targs = davis_track.load_data(test_file, dt=p.dt_test, decay_time=p.decay_time,
                                                separate_channels=p.separate_channels, 
@@ -70,6 +71,7 @@ class TrackingTrial(pytry.PlotTrial):
             targets_test = targs[:, :2]
             inputs_train = inputs_all
             targets_train = targets_all
+            dt_test = p.dt_test
             
         if p.augment:
             inputs_train, targets_train = davis_track.augment(inputs_train, targets_train,
@@ -95,7 +97,7 @@ class TrackingTrial(pytry.PlotTrial):
             model.config[nengo.Connection].synapse = None
 
             inp = nengo.Node(
-                nengo.processes.PresentInput(inputs_test.reshape(-1, dimensions), p.dt_test),
+                nengo.processes.PresentInput(inputs_test.reshape(-1, dimensions), dt_test),
                 size_out=dimensions,
                 )
 
@@ -135,6 +137,9 @@ class TrackingTrial(pytry.PlotTrial):
             sim.run_steps(n_steps, data=dl_test_data)
 
         data = sim.data[p_out].reshape(-1,2)[:len(targets_test)]
+        filt = nengo.synapses.Lowpass(p.output_filter)
+        data = filt.filt(data, dt=dt_test)
+        
         rmse_test = np.sqrt(np.mean((targets_test-data)**2, axis=0))            
         if plt:
             plt.plot(data)
