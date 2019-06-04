@@ -28,8 +28,10 @@ class TrackingTrial(pytry.PlotTrial):
         self.param('separate positive and negative channels', separate_channels=True)
         self.param('number of features in layer 1', n_features_1=6)
         self.param('number of features in layer 2', n_features_2=24)
-        self.param('kernel size', kernel_size=11)
-        self.param('stride', stride=7)
+        self.param('kernel size layer 1', kernel_size_1=11)
+        self.param('stride layer 1', stride_1=7)
+        self.param('kernel size layer 2', kernel_size_2=11)
+        self.param('stride layer 2', stride_2=7)
         self.param('split spatial configuration', split_spatial=True)
         self.param('spatial stride', spatial_stride=10)
         self.param('spatial kernel size', spatial_size=21)
@@ -110,13 +112,13 @@ class TrackingTrial(pytry.PlotTrial):
             
             if not p.split_spatial:
                 # do a standard convnet
-                conv1 = nengo.Convolution(p.n_features_1, shape, channels_last=False, strides=(p.stride,p.stride),
-                                          kernel_size=(p.kernel_size, p.kernel_size))
+                conv1 = nengo.Convolution(p.n_features_1, shape, channels_last=False, strides=(p.stride_1,p.stride_1),
+                                          kernel_size=(p.kernel_size_1, p.kernel_size_1))
                 layer1 = nengo.Ensemble(conv1.output_shape.size, dimensions=1)
                 nengo.Connection(inp, layer1.neurons, transform=conv1)
 
-                conv2 = nengo.Convolution(p.n_features_2, conv1.output_shape, channels_last=False, strides=(p.stride,p.stride),
-                                          kernel_size=(p.kernel_size, p.kernel_size))
+                conv2 = nengo.Convolution(p.n_features_2, conv1.output_shape, channels_last=False, strides=(p.stride_2,p.stride_2),
+                                          kernel_size=(p.kernel_size_2, p.kernel_size_2))
                 layer2 = nengo.Ensemble(conv2.output_shape.size, dimensions=1)
                 nengo.Connection(layer1.neurons, layer2.neurons, transform=conv2)
 

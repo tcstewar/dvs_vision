@@ -58,6 +58,8 @@ class ConvNet(object):
                     for k in range(n_parallel):
                         conv = nengo.Convolution(n_features, prev_output_shape, channels_last=False,
                                                  kernel_size=kernel_size, strides=kernel_stride)
+                        print(conv)
+                        print(n_features, prev_output_shape, kernel_size, kernel_stride)
                         ens = nengo.Ensemble(conv.output_shape.size, dimensions=1,
                                              label='%s' % conv.output_shape)
                         for kk in range(n_local):
