@@ -9,6 +9,7 @@ import tensorflow as tf
 import sys
 sys.path.append('.')
 import davis_track
+import spatial_convnet
 
 class TrackingTrial(pytry.PlotTrial):
     def params(self):
@@ -29,6 +30,10 @@ class TrackingTrial(pytry.PlotTrial):
         self.param('number of features in layer 2', n_features_2=24)
         self.param('kernel size', kernel_size=11)
         self.param('stride', stride=7)
+        self.param('split spatial configuration', split_spatial=True)
+        self.param('spatial stride', spatial_stride=10)
+        self.param('spatial kernel size', spatial_size=21)
+        self.param('number of parallel ensembles', n_parallel=2)
         
         
     def evaluate(self, p, plt):
@@ -102,18 +107,32 @@ class TrackingTrial(pytry.PlotTrial):
                 )
 
             out = nengo.Node(None, size_in=2)
+            
+            if not p.split_spatial:
+                # do a standard convnet
+                conv1 = nengo.Convolution(p.n_features_1, shape, channels_last=False, strides=(p.stride,p.stride),
+                                          kernel_size=(p.kernel_size, p.kernel_size))
+                layer1 = nengo.Ensemble(conv1.output_shape.size, dimensions=1)
+                nengo.Connection(inp, layer1.neurons, transform=conv1)
 
-            conv1 = nengo.Convolution(p.n_features_1, shape, channels_last=False, strides=(p.stride,p.stride),
-                                      kernel_size=(p.kernel_size, p.kernel_size))
-            layer1 = nengo.Ensemble(conv1.output_shape.size, dimensions=1)
-            nengo.Connection(inp, layer1.neurons, transform=conv1)
+                conv2 = nengo.Convolution(p.n_features_2, conv1.output_shape, channels_last=False, strides=(p.stride,p.stride),
+                                          kernel_size=(p.kernel_size, p.kernel_size))
+                layer2 = nengo.Ensemble(conv2.output_shape.size, dimensions=1)
+                nengo.Connection(layer1.neurons, layer2.neurons, transform=conv2)
 
-            conv2 = nengo.Convolution(p.n_features_2, conv1.output_shape, channels_last=False, strides=(p.stride,p.stride),
-                                      kernel_size=(p.kernel_size, p.kernel_size))
-            layer2 = nengo.Ensemble(conv2.output_shape.size, dimensions=1)
-            nengo.Connection(layer1.neurons, layer2.neurons, transform=conv2)
-
-            nengo.Connection(layer2.neurons, out, transform=nengo_dl.dists.Glorot())
+                nengo.Connection(layer2.neurons, out, transform=nengo_dl.dists.Glorot())
+            else:
+                convnet = spatial_convnet.ConvNet(nengo.Network())
+                convnet.make_input_layer(
+                        shape,
+                        spatial_stride=(p.spatial_stride, p.spatial_stride), 
+                        spatial_size=(p.spatial_size,p.spatial_size))
+                convnet.make_middle_layer(n_features=p.n_features_1, n_parallel=p.n_parallel, n_local=1, n_remote=0,
+                                          kernel_stride=(p.stride,p.stride), kernel_size=(p.kernel_size,p.kernel_size))
+                convnet.make_middle_layer(n_features=p.n_features_2, n_parallel=p.n_parallel, n_local=1, n_remote=0,
+                                          kernel_stride=(p.stride,p.stride), kernel_size=(p.kernel_size,p.kernel_size))
+                convnet.make_output_layer(2)
+                nengo.Connection(convnet.output, out)
 
             p_out = nengo.Probe(out)
 
@@ -144,12 +163,12 @@ class TrackingTrial(pytry.PlotTrial):
         if plt:
             plt.plot(data)
             plt.plot(targets_test, ls='--')
-
-
+            
         return dict(
             #loss_pre=loss_pre,
             #loss_post=loss_post
-            rmse_test = rmse_test
+            rmse_test = rmse_test,
+            max_n_neurons = max([ens.n_neurons for ens in model.all_ensembles]) 
             )
         
         
